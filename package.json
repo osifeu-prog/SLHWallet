@@ -1,14 +1,20 @@
 {
   "name": "telegram-wallet-bot",
   "version": "1.0.0",
+  "description": "SLH MEAH community wallet bot",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "telegram",
+    "wallet",
+    "crypto",
+    "slh",
+    "meah"
+  ],
+  "author": "Kaufman (Osif Ungar)",
+  "license": "MIT",
   "dependencies": {
     "dotenv": "^17.2.4",
     "ethers": "^6.16.0",

@@ -7,6 +7,14 @@ const { t } = require('./i18n');
 const log = require('./logger');
 const ledger = require('./ledger');
 
+// GLOBAL ERROR HANDLERS (למניעת קריסה בענן)
+process.on('uncaughtException', err => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', err => {
+  console.error('Unhandled Rejection:', err);
+});
+
 // ENV
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const rpcUrl = process.env.BSC_RPC;
@@ -19,7 +27,7 @@ const TON_DONATE_ADDRESS = 'UQCr743gEr_nqV_0SBkSp3CtYS_15R3LDLBvLmKeEv7XdGvp';
 const EVM_DONATE_ADDRESS = '0xb80cc6c9815af7f5d720a194711e0a3d188c6ef8';
 const DEV_CONTACT = 'Kaufman (Osif Ungar)';
 
-// כאן תכניס את ה-chatId שלך
+// Developer chat ID
 const DEV_CHAT_ID = 224223270;
 
 // Provider + bot wallet + contract
@@ -33,8 +41,7 @@ let users = {};
 if (fs.existsSync(USERS_FILE)) {
   try {
     users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8') || '{}');
-  } catch (e) {
-    console.error('Error reading users.json, using empty structure.');
+  } catch {
     users = {};
   }
 }
@@ -68,22 +75,19 @@ bot.onText(/\/start/, async (msg) => {
   }
   log.info('User started bot', { chatId });
 
-  const text = t(users, chatId, 'start');
-  bot.sendMessage(chatId, text);
+  bot.sendMessage(chatId, t(users, chatId, 'start'));
 });
 
 // /help
 bot.onText(/\/help/, async (msg) => {
   const chatId = msg.chat.id;
-  const text = t(users, chatId, 'help');
-  bot.sendMessage(chatId, text);
+  bot.sendMessage(chatId, t(users, chatId, 'help'));
 });
 
 // /setlang
 bot.onText(/\/setlang/, async (msg) => {
   const chatId = msg.chat.id;
-  const text = t(users, chatId, 'choose_lang');
-  bot.sendMessage(chatId, text);
+  bot.sendMessage(chatId, t(users, chatId, 'choose_lang'));
 });
 
 // language selection
@@ -100,7 +104,6 @@ bot.on('message', async (msg) => {
     users[chatId].lang = text.toLowerCase();
     saveUsers();
     bot.sendMessage(chatId, t(users, chatId, 'lang_set', { lang: text.toLowerCase() }));
-    log.info('Language changed', { chatId, lang: text.toLowerCase() });
     return;
   }
 });
@@ -109,12 +112,6 @@ bot.on('message', async (msg) => {
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = (msg.text || '').trim();
-
-  if (!users[chatId]) {
-    users[chatId] = { lang: 'he' };
-    saveUsers();
-  }
-
   const user = users[chatId];
 
   if (/^\/(start|help|balance|send|setlang|donate|community|learn|deposit|meah_balance|request|meah_send)/.test(text)) {
@@ -122,41 +119,36 @@ bot.on('message', async (msg) => {
   }
 
   if (user.step === 'awaiting_private_key') {
-    const pk = text;
     try {
-      const w = new ethers.Wallet(pk);
+      const w = new ethers.Wallet(text);
       users[chatId] = {
         ...users[chatId],
         walletType: 'imported',
         address: w.address,
-        privateKey: pk,
+        privateKey: text,
         step: null
       };
       saveUsers();
       bot.sendMessage(chatId, t(users, chatId, 'wallet_imported', { address: w.address }));
-      log.info('Wallet imported', { chatId, address: w.address });
-    } catch (e) {
+    } catch {
       bot.sendMessage(chatId, t(users, chatId, 'invalid_key'));
-      log.warn('Invalid private key', { chatId });
     }
     return;
   }
 
   if (user.step === 'awaiting_external_address') {
-    const addr = text;
-    if (!ethers.isAddress(addr)) {
+    if (!ethers.isAddress(text)) {
       bot.sendMessage(chatId, t(users, chatId, 'invalid_address'));
       return;
     }
     users[chatId] = {
       ...users[chatId],
       walletType: 'external',
-      address: addr,
+      address: text,
       step: null
     };
     saveUsers();
-    bot.sendMessage(chatId, t(users, chatId, 'external_address_saved', { address: addr }));
-    log.info('External address saved', { chatId, address: addr });
+    bot.sendMessage(chatId, t(users, chatId, 'external_address_saved', { address: text }));
     return;
   }
 
@@ -175,17 +167,14 @@ bot.on('message', async (msg) => {
         address: w.address,
         privateKey: w.privateKey
       }));
-      log.info('Managed wallet created', { chatId, address: w.address });
     } else if (text === '2') {
       users[chatId].step = 'awaiting_private_key';
       saveUsers();
       bot.sendMessage(chatId, t(users, chatId, 'import_key'));
-      log.info('Awaiting private key', { chatId });
     } else if (text === '3') {
       users[chatId].step = 'awaiting_external_address';
       saveUsers();
       bot.sendMessage(chatId, t(users, chatId, 'external_address_ask'));
-      log.info('Awaiting external address', { chatId });
     }
     return;
   }
@@ -223,9 +212,7 @@ bot.onText(/\/balance/, async (msg) => {
         tokenBalance: humanTokenBalance
       })
     );
-    log.info('Balance checked', { chatId, address });
   } catch (err) {
-    log.error('Balance error', { chatId, err });
     bot.sendMessage(chatId, t(users, chatId, 'balance_error'));
   }
 });
@@ -259,16 +246,12 @@ bot.onText(/\/send (.+) (.+)/, async (msg, match) => {
         ? new ethers.Wallet(user.privateKey, provider)
         : botWallet;
 
-    const contractWithSigner = contract.connect(senderWallet);
-
-    const tx = await contractWithSigner.transfer(to, amount);
+    const tx = await contract.connect(senderWallet).transfer(to, amount);
     bot.sendMessage(chatId, t(users, chatId, 'send_sending', { hash: tx.hash }));
-    log.info('Send tx submitted', { chatId, from: senderWallet.address, to, amount: amountStr, hash: tx.hash });
 
     const receipt = await tx.wait();
     if (receipt.status === 1) {
       bot.sendMessage(chatId, t(users, chatId, 'send_success'));
-      log.info('Send tx success', { chatId, hash: tx.hash });
 
       ledger.logTransaction({
         type: 'SLH_TRANSFER',
@@ -281,10 +264,8 @@ bot.onText(/\/send (.+) (.+)/, async (msg, match) => {
       });
     } else {
       bot.sendMessage(chatId, t(users, chatId, 'send_fail'));
-      log.warn('Send tx failed', { chatId, hash: tx.hash });
     }
-  } catch (err) {
-    log.error('Send tx error', { chatId, err });
+  } catch {
     bot.sendMessage(chatId, t(users, chatId, 'send_error'));
   }
 });
@@ -304,9 +285,7 @@ bot.onText(/\/deposit/, async (msg) => {
       address: user.address,
       symbol
     }));
-    log.info('Deposit address shown', { chatId, address: user.address });
-  } catch (err) {
-    log.error('Deposit error', { chatId, err });
+  } catch {
     bot.sendMessage(chatId, t(users, chatId, 'balance_error'));
   }
 });
@@ -317,7 +296,6 @@ bot.onText(/\/community/, async (msg) => {
   bot.sendMessage(chatId, t(users, chatId, 'community', {
     link: INVESTORS_GROUP_LINK
   }));
-  log.info('Community link sent', { chatId });
 });
 
 // /donate
@@ -341,7 +319,6 @@ bot.onText(/\/donate/, async (msg) => {
   ];
 
   bot.sendMessage(chatId, parts.join('\n'));
-  log.info('Donate info sent', { chatId });
 });
 
 // /learn
@@ -359,7 +336,6 @@ bot.onText(/\/learn/, async (msg) => {
   ];
 
   bot.sendMessage(chatId, parts.join('\n'));
-  log.info('Learn info sent', { chatId });
 });
 
 // /meah_balance
