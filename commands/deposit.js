@@ -1,0 +1,12 @@
+module.exports = (bot, users) => {
+  bot.onText(/\/deposit/, (msg) => {
+    const chatId = msg.chat.id;
+    const user = users[chatId];
+
+    if (!user || !user.address) {
+      return bot.sendMessage(chatId, "??? ?? ???? ?????. ???? /start.");
+    }
+
+    bot.sendMessage(chatId, "?????? ??? ??????:\n" + user.address);
+  });
+};
