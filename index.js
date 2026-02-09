@@ -396,3 +396,22 @@ bot.onText(/\/meah_send (\d+) (.+)/, (msg, match) => {
 });
 
 console.log('הבוט רץ... (SLH MEAH multi-language, donate, community, learn, ledger ready)');
+
+bot.onText(/\/app/, (msg) => {
+  const chatId = msg.chat.id;
+
+  bot.sendMessage(chatId, "פותח את האפליקציה…", {
+    reply_markup: {
+      keyboard: [
+        [
+          {
+            text: "פתח אפליקציה",
+            web_app: { url: "https://slhwallet-production.up.railway.app/webapp/index.html" }
+          }
+        ]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    }
+  });
+});
